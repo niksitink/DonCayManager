@@ -64,7 +64,7 @@ sg.Parent=(gethui and gethui()) or game:GetService("CoreGui")
 local blur=Instance.new("BlurEffect",Lighting) blur.Size=4
 
 local holder=Instance.new("Frame",sg)
-holder.Size=UDim2.fromOffset(360,190)
+holder.Size=UDim2.fromOffset(360,190)  -- sẽ tự tăng trong hàm relayout() khi Task dài
 holder.Position=UDim2.new(0,40,0,120)
 holder.BackgroundColor3=C.glassBG
 holder.BackgroundTransparency=C.glassAlpha
@@ -127,9 +127,11 @@ uiUser.Text=(#LP.Name<=4 and LP.Name.."****") or (LP.Name:sub(1,4).."****")
 mkLabelRow(pageInfo,"Task:",24)
 local uiTask=Instance.new("TextButton",pageInfo)
 uiTask.Position=UDim2.new(0,120,0,24)
-uiTask.Size=UDim2.new(1,-120,0,22)
+uiTask.Size=UDim2.new(1,-120,0,22) -- base 22, sẽ tự dãn theo nội dung
 uiTask.BackgroundTransparency=1 uiTask.Font=Enum.Font.GothamBold uiTask.TextSize=16
 uiTask.TextXAlignment=Enum.TextXAlignment.Left uiTask.TextColor3=C.gold
+uiTask.TextWrapped=true                                -- ⭐ Cho phép xuống dòng
+uiTask.AutomaticSize=Enum.AutomaticSize.Y             -- ⭐ Tự dãn theo chiều dọc
 uiTask.Text=(DATA.description~="" and DATA.description or "—")
 uiTask.AutoButtonColor=false uiTask.ZIndex=10
 uiTask.MouseButton1Click:Connect(function()
@@ -143,12 +145,28 @@ uiTask.MouseButton1Click:Connect(function()
   end)
 end)
 
-mkLabelRow(pageInfo,"Time:",48)
+mkLabelRow(pageInfo,"Time:",48) -- mốc gốc là 48, sẽ cộng thêm ‘extra’ nếu Task cao hơn 22
 local timeValue=Instance.new("TextLabel",pageInfo)
 timeValue.Position=UDim2.new(0,120,0,48) timeValue.Size=UDim2.new(1,-120,0,26)
 timeValue.BackgroundTransparency=1 timeValue.Font=Enum.Font.GothamBold timeValue.TextSize=20
 timeValue.TextXAlignment=Enum.TextXAlignment.Left timeValue.TextColor3=C.text timeValue.RichText=true
 timeValue.Text="0m 00s   •   FPS: <b>0</b>"
+
+-- ⭐ Tự dãn layout khi Task dài
+local BASE_TASK_H=22
+local BASE_TIME_Y=48
+local BASE_HOLDER_H=190
+local function relayout()
+  local extra=math.max(0, uiTask.AbsoluteSize.Y - BASE_TASK_H)
+  -- đẩy Time xuống theo độ cao thực tế của Task
+  timeValue.Position = UDim2.new(0,120,0, BASE_TIME_Y + extra)
+  -- tăng chiều cao khung để chừa chỗ cho phần dưới
+  holder.Size = UDim2.fromOffset(360, BASE_HOLDER_H + extra)
+end
+-- gọi 1 lần và theo dõi sự thay đổi
+relayout()
+uiTask:GetPropertyChangedSignal("Text"):Connect(relayout)
+uiTask:GetPropertyChangedSignal("AbsoluteSize"):Connect(relayout)
 
 -- JobId bar
 local jobWrap=Instance.new("Frame",holder) jobWrap.Size=UDim2.new(1,-20,0,30)
@@ -192,7 +210,7 @@ statusBtn.MouseButton1Click:Connect(function() sidx=sidx%#STATUS+1 DATA.status=S
 
 -- LOOP
 local acc,frames,fps=0,0,60
--- ĐÃ SỬA: Không reset về 1p sau 59p; hỗ trợ hiển thị giờ nếu > 1h
+-- fmtTime hiển thị theo giờ:phút:giây khi > 1h
 local function fmtTime(t)
   t = math.max(0, math.floor(t + 0.5))
   local h = math.floor(t / 3600)
