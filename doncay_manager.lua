@@ -192,9 +192,26 @@ statusBtn.MouseButton1Click:Connect(function() sidx=sidx%#STATUS+1 DATA.status=S
 
 -- LOOP
 local acc,frames,fps=0,0,60
-local function fmtTime(t)t=math.max(0,math.floor(t+0.5))local m=math.floor((t%3600)/60)local s=t%60 return string.format("<b>%dm %02ds</b>",m,s)end
+-- ĐÃ SỬA: Không reset về 1p sau 59p; hỗ trợ hiển thị giờ nếu > 1h
+local function fmtTime(t)
+  t = math.max(0, math.floor(t + 0.5))
+  local h = math.floor(t / 3600)
+  local m = math.floor((t % 3600) / 60)
+  local s = t % 60
+  if h > 0 then
+    return string.format("<b>%dh %02dm %02ds</b>", h, m, s)
+  else
+    return string.format("<b>%dm %02ds</b>", m, s)
+  end
+end
 local function fpsRGB(f)if f<40 then return"235,80,80"elseif f<80 then return"240,190,70"else return"70,190,110"end end
-RunService.RenderStepped:Connect(function(dt)acc+=dt;frames+=1;if acc>=0.5 then fps=math.floor(frames/acc+0.5)acc=0 frames=0 end local e=DATA.elapsed or 0 if DATA.run_since then e=e+math.max(0,now()-DATA.run_since)end timeValue.Text=string.format('%s   •   FPS: <font color="rgb(%s)"><b>%d</b></font>',fmtTime(e),fpsRGB(fps),fps)end)
+RunService.RenderStepped:Connect(function(dt)
+  acc+=dt;frames+=1
+  if acc>=0.5 then fps=math.floor(frames/acc+0.5) acc=0 frames=0 end
+  local e=DATA.elapsed or 0
+  if DATA.run_since then e=e+math.max(0,now()-DATA.run_since) end
+  timeValue.Text=string.format('%s   •   FPS: <font color="rgb(%s)"><b>%d</b></font>',fmtTime(e),fpsRGB(fps),fps)
+end)
 
 -- DRAG
 local UIS=game:GetService("UserInputService")local dragging,dragStart,startPos=false,nil,nil
