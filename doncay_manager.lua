@@ -1,6 +1,7 @@
 --[[ Info HUD (Bold Everything + Boot Note) • Blue Glass • autosave per-account
      • no JobId autosave • Timer auto start • Time+FPS bold RichText
      • Blur glass background • Setting tab restored • Teleport boot note
+     • UI Scale adjustable & saved per-account
 ]]
 
 local Players = game:GetService("Players")
@@ -27,13 +28,24 @@ local function jencode(t) return HttpService:JSONEncode(t) end
 local function jdecode(s) local ok,r=pcall(function() return HttpService:JSONDecode(s) end) return ok and r or nil end
 local function deepcopy(t) local r={} for k,v in pairs(t) do r[k]=type(v)=="table" and deepcopy(v) or v end return r end
 
-local DEFAULT={description="",status="Đang làm",elapsed=0,run_since=nil}
+-- added: scale field
+local DEFAULT={description="",status="Đang làm",elapsed=0,run_since=nil, scale=0.88}
 getgenv().RAM_ORDER=getgenv().RAM_ORDER or deepcopy(DEFAULT)
-local function saveData(d) d=d or getgenv().RAM_ORDER if can_write then pcall(function() writefile(STORE_FILE,jencode(d)) end) else getgenv().RAM_ORDER=deepcopy(d) end end
+
+local function saveData(d)
+  d=d or getgenv().RAM_ORDER
+  if can_write then pcall(function() writefile(STORE_FILE,jencode(d)) end)
+  else getgenv().RAM_ORDER=deepcopy(d) end
+end
+
 local function loadData()
   if can_write and isfile and isfile(STORE_FILE) then
     local ok,res=pcall(function() return jdecode(readfile(STORE_FILE)) end)
-    if ok and type(res)=="table" then for k,v in pairs(DEFAULT) do if res[k]==nil then res[k]=v end end getgenv().RAM_ORDER=res return res end
+    if ok and type(res)=="table" then
+      for k,v in pairs(DEFAULT) do if res[k]==nil then res[k]=v end end
+      getgenv().RAM_ORDER=res
+      return res
+    end
   end
   return getgenv().RAM_ORDER
 end
@@ -64,12 +76,16 @@ sg.Parent=(gethui and gethui()) or game:GetService("CoreGui")
 local blur=Instance.new("BlurEffect",Lighting) blur.Size=4
 
 local holder=Instance.new("Frame",sg)
-holder.Size=UDim2.fromOffset(360,190)  -- sẽ tự tăng trong hàm relayout() khi Task dài
+holder.Size=UDim2.fromOffset(360,190)  -- auto tăng bởi relayout()
 holder.Position=UDim2.new(0,40,0,120)
 holder.BackgroundColor3=C.glassBG
 holder.BackgroundTransparency=C.glassAlpha
 Instance.new("UICorner",holder).CornerRadius=UDim.new(0,14)
 local stroke=Instance.new("UIStroke",holder) stroke.Color=C.stroke stroke.Thickness=1.4 stroke.Transparency=0.18
+
+-- 🔹 UIScale (saved per-account)
+local uiScale = Instance.new("UIScale", holder)
+uiScale.Scale = tonumber(DATA.scale) or 0.88
 
 -- header tabs
 local header=Instance.new("Frame",holder) header.BackgroundTransparency=1
@@ -106,16 +122,21 @@ end
 tabInfo.MouseButton1Click:Connect(function() switch(true) end)
 tabSetting.MouseButton1Click:Connect(function() switch(false) end)
 
--- Username / Task / Time
+-- helpers
 local function mkLabelRow(parent,label,y)
   local lb=Instance.new("TextLabel",parent)
   lb.Position=UDim2.new(0,0,0,y)
   lb.Size=UDim2.new(0,120,0,22)
   lb.BackgroundTransparency=1
-  lb.Font=Enum.Font.GothamBold lb.TextSize=16
-  lb.TextXAlignment=Enum.TextXAlignment.Left lb.TextColor3=C.text
-  lb.Text=label return lb
+  lb.Font=Enum.Font.GothamBold
+  lb.TextSize=16
+  lb.TextXAlignment=Enum.TextXAlignment.Left
+  lb.TextColor3=C.text
+  lb.Text=label
+  return lb
 end
+
+-- Username
 mkLabelRow(pageInfo,"Username:",0)
 local uiUser=Instance.new("TextLabel",pageInfo)
 uiUser.Position=UDim2.new(0,120,0,0)
@@ -124,14 +145,15 @@ uiUser.BackgroundTransparency=1 uiUser.Font=Enum.Font.GothamBold uiUser.TextSize
 uiUser.TextXAlignment=Enum.TextXAlignment.Left uiUser.TextColor3=Color3.fromRGB(255,120,120)
 uiUser.Text=(#LP.Name<=4 and LP.Name.."****") or (LP.Name:sub(1,4).."****")
 
+-- Task
 mkLabelRow(pageInfo,"Task:",24)
 local uiTask=Instance.new("TextButton",pageInfo)
 uiTask.Position=UDim2.new(0,120,0,24)
-uiTask.Size=UDim2.new(1,-120,0,22) -- base 22, sẽ tự dãn theo nội dung
+uiTask.Size=UDim2.new(1,-120,0,22)
 uiTask.BackgroundTransparency=1 uiTask.Font=Enum.Font.GothamBold uiTask.TextSize=16
 uiTask.TextXAlignment=Enum.TextXAlignment.Left uiTask.TextColor3=C.gold
-uiTask.TextWrapped=true                                -- ⭐ Cho phép xuống dòng
-uiTask.AutomaticSize=Enum.AutomaticSize.Y             -- ⭐ Tự dãn theo chiều dọc
+uiTask.TextWrapped=true
+uiTask.AutomaticSize=Enum.AutomaticSize.Y
 uiTask.Text=(DATA.description~="" and DATA.description or "—")
 uiTask.AutoButtonColor=false uiTask.ZIndex=10
 uiTask.MouseButton1Click:Connect(function()
@@ -145,25 +167,51 @@ uiTask.MouseButton1Click:Connect(function()
   end)
 end)
 
-mkLabelRow(pageInfo,"Time:",48) -- mốc gốc là 48, sẽ cộng thêm ‘extra’ nếu Task cao hơn 22
+-- Time
+mkLabelRow(pageInfo,"Time:",48)
 local timeValue=Instance.new("TextLabel",pageInfo)
 timeValue.Position=UDim2.new(0,120,0,48) timeValue.Size=UDim2.new(1,-120,0,26)
 timeValue.BackgroundTransparency=1 timeValue.Font=Enum.Font.GothamBold timeValue.TextSize=20
 timeValue.TextXAlignment=Enum.TextXAlignment.Left timeValue.TextColor3=C.text timeValue.RichText=true
 timeValue.Text="0m 00s   •   FPS: <b>0</b>"
 
--- ⭐ Tự dãn layout khi Task dài
-local BASE_TASK_H=22
-local BASE_TIME_Y=48
-local BASE_HOLDER_H=190
-local function relayout()
-  local extra=math.max(0, uiTask.AbsoluteSize.Y - BASE_TASK_H)
-  -- đẩy Time xuống theo độ cao thực tế của Task
-  timeValue.Position = UDim2.new(0,120,0, BASE_TIME_Y + extra)
-  -- tăng chiều cao khung để chừa chỗ cho phần dưới
-  holder.Size = UDim2.fromOffset(360, BASE_HOLDER_H + extra)
+-- Players (thẳng hàng với Time)
+local playersLabel = mkLabelRow(pageInfo, "Players:", 76)
+local playersValue = Instance.new("TextLabel", pageInfo)
+playersValue.Position = UDim2.new(0,120,0,76)
+playersValue.Size = UDim2.new(1,-120,0,26)
+playersValue.BackgroundTransparency = 1
+playersValue.Font = Enum.Font.GothamBold
+playersValue.TextSize = 20
+playersValue.TextXAlignment = Enum.TextXAlignment.Left
+playersValue.TextColor3 = C.text
+playersValue.RichText = true
+playersValue.Text = "<b>--/--</b>"
+
+local function updatePlayerCount()
+  local cur = #Players:GetPlayers()
+  local max = Players.MaxPlayers or 12
+  local hex = (cur >= max) and "#FF6EA8" or "#8BE4FF"
+  playersValue.Text = string.format('<font color="%s"><b>%d/%d</b></font>', hex, cur, max)
 end
--- gọi 1 lần và theo dõi sự thay đổi
+Players.PlayerAdded:Connect(updatePlayerCount)
+Players.PlayerRemoving:Connect(function() task.defer(updatePlayerCount) end)
+updatePlayerCount()
+
+-- Auto layout when Task grows
+local BASE_TASK_H      = 22
+local BASE_TIME_Y      = 48
+local BASE_ROW_GAP     = 28
+local BASE_HOLDER_H    = 190
+local function relayout()
+  local extra = math.max(0, uiTask.AbsoluteSize.Y - BASE_TASK_H)
+  local timeY = BASE_TIME_Y + extra
+  timeValue.Position   = UDim2.new(0,120,0,timeY)
+  local playersY = timeY + BASE_ROW_GAP
+  playersLabel.Position = UDim2.new(0,0,   0,playersY)
+  playersValue.Position = UDim2.new(0,120, 0,playersY)
+  holder.Size = UDim2.fromOffset(360, BASE_HOLDER_H + extra + BASE_ROW_GAP)
+end
 relayout()
 uiTask:GetPropertyChangedSignal("Text"):Connect(relayout)
 uiTask:GetPropertyChangedSignal("AbsoluteSize"):Connect(relayout)
@@ -182,10 +230,11 @@ jobBox.FocusLost:Connect(function(enter)
     if j=="" then notify("Chưa nhập JobId") else TeleportService:TeleportToPlaceInstance(game.PlaceId,j,LP) end end
 end)
 
--- Setting page
+-- ===== Setting page =====
 local function mkSmallLbl(parent,t,y)
   local lb=Instance.new("TextLabel",parent) lb.Position=UDim2.new(0,0,0,y) lb.Size=UDim2.new(0,90,0,22)
-  lb.BackgroundTransparency=1 lb.Font=Enum.Font.Gotham lb.TextSize=14 lb.TextXAlignment=Enum.TextXAlignment.Left lb.TextColor3=C.sub lb.Text=t
+  lb.BackgroundTransparency=1 lb.Font=Enum.Font.Gotham lb.TextSize=14
+  lb.TextXAlignment=Enum.TextXAlignment.Left lb.TextColor3=C.sub lb.Text=t
 end
 mkSmallLbl(pageSetting,"Đơn",0)
 local tbTask=Instance.new("TextBox",pageSetting)
@@ -208,9 +257,52 @@ local function startTimer() DATA.run_since=now() saveData(DATA) end
 local function pauseTimer() if DATA.run_since then DATA.elapsed=math.max(0,(DATA.elapsed or 0)+(now()-DATA.run_since)) DATA.run_since=nil saveData(DATA) end end
 statusBtn.MouseButton1Click:Connect(function() sidx=sidx%#STATUS+1 DATA.status=STATUS[sidx] applyStatus(DATA.status) if DATA.status=="Đang làm" then startTimer() else pauseTimer() end end)
 
+-- 🔹 UI Scale controls (saved)
+mkSmallLbl(pageSetting,"Tỉ lệ UI",48)
+local scaleWrap=Instance.new("Frame",pageSetting)
+scaleWrap.Position=UDim2.new(0,90,0,48)
+scaleWrap.Size=UDim2.fromOffset(220,22)
+scaleWrap.BackgroundTransparency=1
+
+local function mkBtn(txt,xw)
+  local b=Instance.new("TextButton",scaleWrap)
+  b.Size=UDim2.fromOffset(28,22); b.Position=UDim2.new(0,xw,0,0)
+  b.BackgroundColor3=C.inputBG; b.Font=Enum.Font.GothamBold; b.TextSize=14; b.Text=txt; b.TextColor3=C.text
+  Instance.new("UICorner",b).CornerRadius=UDim.new(0,6)
+  local st=Instance.new("UIStroke",b) st.Color=C.inputStroke st.Thickness=1
+  return b
+end
+
+local minus=mkBtn("−",0)
+local plus =mkBtn("+",220-28)
+
+local val=Instance.new("TextLabel",scaleWrap)
+val.Position=UDim2.new(0,32,0,0)
+val.Size=UDim2.fromOffset(220-64,22)
+val.BackgroundColor3=C.inputBG
+val.Font=Enum.Font.GothamBold
+val.TextSize=14
+val.TextColor3=C.text
+val.TextXAlignment=Enum.TextXAlignment.Center
+Instance.new("UICorner",val).CornerRadius=UDim.new(0,6)
+Instance.new("UIStroke",val).Color=C.inputStroke
+
+local function clamp(n,a,b) if n<a then return a elseif n>b then return b else return n end end
+local function showScale() val.Text=string.format("%.2f", uiScale.Scale) end
+showScale()
+
+local function setScale(s)
+  uiScale.Scale=clamp(s,0.75,1.10)
+  DATA.scale=uiScale.Scale
+  saveData(DATA)
+  showScale()
+end
+
+minus.MouseButton1Click:Connect(function() setScale(uiScale.Scale-0.02) end)
+plus.MouseButton1Click:Connect(function() setScale(uiScale.Scale+0.02) end)
+
 -- LOOP
 local acc,frames,fps=0,0,60
--- fmtTime hiển thị theo giờ:phút:giây khi > 1h
 local function fmtTime(t)
   t = math.max(0, math.floor(t + 0.5))
   local h = math.floor(t / 3600)
@@ -222,7 +314,7 @@ local function fmtTime(t)
     return string.format("<b>%dm %02ds</b>", m, s)
   end
 end
-local function fpsRGB(f)if f<40 then return"235,80,80"elseif f<80 then return"240,190,70"else return"70,190,110"end end
+local function fpsRGB(f) if f<40 then return "235,80,80" elseif f<80 then return "240,190,70" else return "70,190,110" end end
 RunService.RenderStepped:Connect(function(dt)
   acc+=dt;frames+=1
   if acc>=0.5 then fps=math.floor(frames/acc+0.5) acc=0 frames=0 end
